@@ -1,4 +1,5 @@
 use std::{io, sync::mpsc};
+use std::time::{Instant, Duration};
 
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{DefaultTerminal, prelude::*, symbols::border, widgets::{Block, Gauge, Paragraph, Wrap}};
@@ -99,21 +100,50 @@ impl App {
         tx: mpsc::Sender<Event>,
     ) -> io::Result<()> {
         terminal.draw(|frame| self.draw(frame))?;
+
+        // Use a non-blocking receive loop so UI input events are handled
+        // immediately while a CPU-bound background thread is running.
+        let mut last_draw = Instant::now();
+        let min_frame = Duration::from_millis(50); // ~20 FPS
+
         while !self.exit {
-            match rx.recv().unwrap() {
-                Event::Input(key_event) => self.handle_key_event(key_event, &tx)?,
-                Event::Progress(max_n, progress) => {
-                    self.max_number = max_n;
-                    self.background_progress = progress;
-                },
-                Event::Complete(max_n, comp_primes) => {
-                    self.max_number = max_n;
-                    self.background_progress = 1.0;
-                    self.prime_vector = comp_primes;
-                    self.running = false;
-                },
+            let mut dirty = false;
+
+            // Drain all pending events and mark dirty when state changes
+            loop {
+                match rx.try_recv() {
+                    Ok(event) => {
+                        dirty = true;
+                        match event {
+                            Event::Input(key_event) => self.handle_key_event(key_event, &tx)?,
+                            Event::Progress(max_n, progress) => {
+                                self.max_number = max_n;
+                                self.background_progress = progress;
+                            },
+                            Event::Complete(max_n, comp_primes) => {
+                                self.max_number = max_n;
+                                self.background_progress = 1.0;
+                                self.prime_vector = comp_primes;
+                                self.running = false;
+                            },
+                        }
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        self.exit = true;
+                        break;
+                    },
+                }
             }
-            terminal.draw(|frame| self.draw(frame))?;
+
+            // Only redraw if something changed or periodically while running
+            if dirty || (self.running && last_draw.elapsed() >= min_frame) {
+                terminal.draw(|frame| self.draw(frame))?;
+                last_draw = Instant::now();
+            }
+
+            // small sleep to avoid a hot loop while still being responsive
+            std::thread::sleep(Duration::from_millis(8));
         }
 
         Ok(())
