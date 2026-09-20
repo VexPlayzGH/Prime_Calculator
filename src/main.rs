@@ -1,8 +1,13 @@
+use std::time::{Duration, Instant};
 use std::{io, sync::mpsc};
-use std::time::{Instant, Duration};
 
 use crossterm::event::{KeyCode, KeyEventKind};
-use ratatui::{DefaultTerminal, prelude::*, symbols::border, widgets::{Block, Gauge, Paragraph, Wrap}};
+use ratatui::{
+    DefaultTerminal,
+    prelude::*,
+    symbols::border,
+    widgets::{Block, Gauge, Paragraph, Wrap},
+};
 
 fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
@@ -40,7 +45,7 @@ fn handle_input_events(tx: mpsc::Sender<Event>) {
     loop {
         match crossterm::event::read().unwrap() {
             crossterm::event::Event::Key(key_event) => tx.send(Event::Input(key_event)).unwrap(),
-            _ => {},
+            _ => {}
         }
     }
 }
@@ -52,11 +57,11 @@ fn run_background_thread(tx: mpsc::Sender<Event>, max_n: u128) {
     match max_n {
         0 | 1 => {
             tx.send(Event::Complete(max_n, comp_primes)).unwrap();
-        },
+        }
         2 => {
             comp_primes.push(2);
             tx.send(Event::Complete(max_n, comp_primes)).unwrap();
-        },
+        }
         _ => {
             for n in 2..=max_n {
                 let mut is_prime = true;
@@ -76,7 +81,7 @@ fn run_background_thread(tx: mpsc::Sender<Event>, max_n: u128) {
                 }
             }
             tx.send(Event::Complete(max_n, comp_primes)).unwrap();
-        },
+        }
     }
 }
 
@@ -101,15 +106,12 @@ impl App {
     ) -> io::Result<()> {
         terminal.draw(|frame| self.draw(frame))?;
 
-        // Use a non-blocking receive loop so UI input events are handled
-        // immediately while a CPU-bound background thread is running.
         let mut last_draw = Instant::now();
-        let min_frame = Duration::from_millis(50); // ~20 FPS
+        let min_frame = Duration::from_millis(50);
 
         while !self.exit {
             let mut dirty = false;
 
-            // Drain all pending events and mark dirty when state changes
             loop {
                 match rx.try_recv() {
                     Ok(event) => {
@@ -119,30 +121,28 @@ impl App {
                             Event::Progress(max_n, progress) => {
                                 self.max_number = max_n;
                                 self.background_progress = progress;
-                            },
+                            }
                             Event::Complete(max_n, comp_primes) => {
                                 self.max_number = max_n;
                                 self.background_progress = 1.0;
                                 self.prime_vector = comp_primes;
                                 self.running = false;
-                            },
+                            }
                         }
                     }
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         self.exit = true;
                         break;
-                    },
+                    }
                 }
             }
 
-            // Only redraw if something changed or periodically while running
             if dirty || (self.running && last_draw.elapsed() >= min_frame) {
                 terminal.draw(|frame| self.draw(frame))?;
                 last_draw = Instant::now();
             }
 
-            // small sleep to avoid a hot loop while still being responsive
             std::thread::sleep(Duration::from_millis(8));
         }
 
@@ -169,35 +169,33 @@ impl App {
                         Color::Blue => Color::Green,
                         _ => Color::Green,
                     };
-                },
+                }
                 KeyCode::Char(character) if character.is_ascii_digit() && !self.running => {
                     self.input.push(character);
                     self.input_error = None;
-                },
+                }
                 KeyCode::Backspace if !self.running => {
                     self.input.pop();
-                },
-                KeyCode::Enter if !self.running => {
-                    match self.input.parse::<u128>() {
-                        Ok(max_n) => {
-                            self.max_number = max_n;
-                            self.background_progress = 0.0;
-                            self.prime_vector.clear();
-                            self.results_scroll = 0;
-                            self.input_error = None;
-                            self.running = true;
-                            let worker_tx = tx.clone();
-                            std::thread::spawn(move || run_background_thread(worker_tx, max_n));
-                        },
-                        Err(_) => self.input_error = Some("Enter a valid number".into()),
+                }
+                KeyCode::Enter if !self.running => match self.input.parse::<u128>() {
+                    Ok(max_n) => {
+                        self.max_number = max_n;
+                        self.background_progress = 0.0;
+                        self.prime_vector.clear();
+                        self.results_scroll = 0;
+                        self.input_error = None;
+                        self.running = true;
+                        let worker_tx = tx.clone();
+                        std::thread::spawn(move || run_background_thread(worker_tx, max_n));
                     }
+                    Err(_) => self.input_error = Some("Enter a valid number".into()),
                 },
                 KeyCode::Up => self.results_scroll = self.results_scroll.saturating_sub(1),
                 KeyCode::Down => self.results_scroll = self.results_scroll.saturating_add(1),
                 KeyCode::PageUp => self.results_scroll = self.results_scroll.saturating_sub(10),
                 KeyCode::PageDown => self.results_scroll = self.results_scroll.saturating_add(10),
                 KeyCode::Home => self.results_scroll = 0,
-                _ => {},
+                _ => {}
             }
         }
         Ok(())
@@ -206,23 +204,31 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer)
-    where Self: Sized {
-        let vertical_layout = Layout::vertical([Constraint::Percentage(20), Constraint::Percentage(80)]);
+    where
+        Self: Sized,
+    {
+        let vertical_layout =
+            Layout::vertical([Constraint::Percentage(20), Constraint::Percentage(80)]);
         let [title_area, gauge_area] = vertical_layout.areas(area);
         let [input_area, progress_area, results_area] = Layout::vertical([
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Min(0),
-        ]).areas(gauge_area);
+        ])
+        .areas(gauge_area);
 
-        Line::from("PRIME CALCULATOR").bold().centered().render(title_area, buf);
+        Line::from("PRIME CALCULATOR")
+            .bold()
+            .centered()
+            .render(title_area, buf);
 
         let instructions = Line::from(vec![
             " Change Color ".into(),
             "<C>".blue().bold(),
             " Quit ".into(),
             "<Esc>".red().bold(),
-        ]).centered();
+        ])
+        .centered();
 
         let input_title = if self.running {
             "Maximum number (running)"
@@ -237,7 +243,7 @@ impl Widget for &App {
         Paragraph::new(input_text)
             .block(Block::bordered().title(input_title.bold()))
             .render(input_area, buf);
-        
+
         if self.running {
             let block = Block::bordered()
                 .title(Line::from("Progress").bold())
@@ -245,22 +251,27 @@ impl Widget for &App {
                 .border_set(border::THICK);
 
             let progress_bar = Gauge::default()
-                .gauge_style(Style::default()
-                .fg(self.progress_bar_color))
+                .gauge_style(Style::default().fg(self.progress_bar_color))
                 .block(block)
-                .label(format!("Computing primes up to {}: {:.2}%", self.max_number, self.background_progress * 100_f64))
+                .label(format!(
+                    "Computing primes up to {}: {:.2}%",
+                    self.max_number,
+                    self.background_progress * 100_f64
+                ))
                 .ratio(self.background_progress);
 
-             progress_bar.render( Rect {
-                x: progress_area.left(),
-                y: progress_area.top(),
-                width: progress_area.width,
-                height: 3,
-            }, buf)
-        }        
-        
-        if self.background_progress == 1.0 {
+            progress_bar.render(
+                Rect {
+                    x: progress_area.left(),
+                    y: progress_area.top(),
+                    width: progress_area.width,
+                    height: 3,
+                },
+                buf,
+            )
+        }
 
+        if self.background_progress == 1.0 {
             let res_instructions = Line::from(vec![
                 " Scroll one line ".into(),
                 "<Up, Down>".blue().bold(),
@@ -270,16 +281,18 @@ impl Widget for &App {
                 "<Home>".green().bold(),
                 " Quit ".into(),
                 "<Esc>".red().bold(),
-            ]).centered();
-
+            ])
+            .centered();
 
             Paragraph::new(format!("Primes found: {:?}", self.prime_vector))
-                .block(Block::bordered().title("Results".bold()).title_bottom(res_instructions))
+                .block(
+                    Block::bordered()
+                        .title("Results".bold())
+                        .title_bottom(res_instructions),
+                )
                 .wrap(Wrap { trim: true })
                 .scroll((self.results_scroll, 0))
-                    .render(results_area, buf);
-        }    
-
-       
+                .render(results_area, buf);
+        }
     }
 }
