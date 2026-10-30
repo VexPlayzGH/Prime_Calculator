@@ -18,10 +18,7 @@ fn main() -> io::Result<()> {
         max_number: 0_u128,
         background_progress: 0_f64,
         prime_vector: Vec::new(),
-<<<<<<< HEAD
-=======
         prime_count: 0usize,
->>>>>>> 35202f0 (Added prime count)
         results_scroll: 0,
         input: String::new(),
         input_error: None,
@@ -95,10 +92,7 @@ pub struct App {
     max_number: u128,
     background_progress: f64,
     prime_vector: Vec<u128>,
-<<<<<<< HEAD
-=======
     prime_count: usize,
->>>>>>> 35202f0 (Added prime count)
     results_scroll: u16,
     input: String,
     input_error: Option<String>,
@@ -133,12 +127,8 @@ impl App {
                             Event::Complete(max_n, comp_primes) => {
                                 self.max_number = max_n;
                                 self.background_progress = 1.0;
-<<<<<<< HEAD
-                                self.prime_vector = comp_primes;
-=======
                                 self.prime_vector = comp_primes.clone();
                                 self.prime_count = comp_primes.len();
->>>>>>> 35202f0 (Added prime count)
                                 self.running = false;
                             }
                         }
@@ -300,11 +290,7 @@ impl Widget for &App {
             Paragraph::new(format!("Primes found: {:?}", self.prime_vector))
                 .block(
                     Block::bordered()
-<<<<<<< HEAD
-                        .title("Results".bold())
-=======
                         .title(format!("Results // Primes found: {}", self.prime_count).bold())
->>>>>>> 35202f0 (Added prime count)
                         .title_bottom(res_instructions),
                 )
                 .wrap(Wrap { trim: true })
